@@ -48,7 +48,9 @@
         }
         if (attribute.frame.origin.y >= currentRowMaxY) {
             // 开始新的一行
-            [rows addObject:currentRowAttributes];
+            if (currentRowAttributes) {
+                [rows addObject:currentRowAttributes];
+            }
             currentRowAttributes = @[attribute].mutableCopy;
             currentRowMaxY = CGRectGetMaxY(attribute.frame);
         } else {
