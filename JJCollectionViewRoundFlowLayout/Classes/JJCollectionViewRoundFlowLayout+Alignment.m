@@ -27,21 +27,42 @@
     return allSectionDict;
 }
 
-/// 将相同y位置的cell集合到一个列表中(竖向)
+/// 将cell和SupplementaryView按照行分组(竖向)
 /// @param layoutAttributesAttrs layoutAttributesAttrs description
 - (NSArray *)groupLayoutAttributesForElementsByYLineWithLayoutAttributesAttrs:(NSArray *)layoutAttributesAttrs{
-    NSMutableDictionary *allDict = [NSMutableDictionary dictionaryWithCapacity:0];
-    for (UICollectionViewLayoutAttributes *attr  in layoutAttributesAttrs) {
-        
-        NSMutableArray *dictArr = allDict[@(CGRectGetMidY(attr.frame))];
-        if (dictArr) {
-            [dictArr addObject:[attr copy]];
-        }else{
-            NSMutableArray *arr = [NSMutableArray arrayWithObject:[attr copy]];
-            allDict[@(CGRectGetMidY(attr.frame))] = arr;
+    // - (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect 没有明确说明是按照indexPath升序排列，sorted下更保险
+    // 对传入的attributes进行排序
+    NSArray *sortedAttributes = [layoutAttributesAttrs sortedArrayUsingComparator:^NSComparisonResult(UICollectionViewLayoutAttributes *attr1, UICollectionViewLayoutAttributes *attr2) {
+        return [attr1.indexPath compare:attr2.indexPath];
+    }];
+
+    // 分组处理
+    NSMutableArray *rows = [NSMutableArray array];
+    NSMutableArray *currentRowAttributes;
+    CGFloat currentRowMaxY = -1;
+    for (UICollectionViewLayoutAttributes *attribute in sortedAttributes) {
+        if (attribute.representedElementKind) {
+            // SupplementaryView单独一行
+            [rows addObject:@[attribute]];
+            continue;
+        }
+        if (attribute.frame.origin.y >= currentRowMaxY) {
+            // 开始新的一行
+            [rows addObject:currentRowAttributes];
+            currentRowAttributes = @[attribute].mutableCopy;
+            currentRowMaxY = CGRectGetMaxY(attribute.frame);
+        } else {
+            // 添加到当前行
+            [currentRowAttributes addObject:attribute];
+            currentRowMaxY = MAX(currentRowMaxY, CGRectGetMaxY(attribute.frame));
         }
     }
-    return allDict.allValues;
+
+    // 添加最后一行
+    if (currentRowAttributes.count > 0) {
+        [rows addObject:currentRowAttributes];
+    }
+    return [rows copy];
 }
 
 /// 将相同x位置的cell集合到一个列表中(横向)
@@ -89,6 +110,9 @@
     switch (alignmentType) {
         case JJCollectionViewFlowLayoutAlignmentTypeByLeft:{
             [self evaluatedCellSettingFrameByLeftWithWithJJCollectionLayout:self layoutAttributesAttrs:layoutAttributesAttrs];
+        }break;
+        case JJCollectionViewFlowLayoutAlignmentTypeByLeftTop:{
+            [self evaluatedCellSettingFrameByLeftTopWithWithJJCollectionLayout:self layoutAttributesAttrs:layoutAttributesAttrs];
         }break;
         case JJCollectionViewFlowLayoutAlignmentTypeByCenter:{
             [self evaluatedCellSettingFrameByCentertWithWithJJCollectionLayout:self layoutAttributesAttrs:layoutAttributesAttrs];
@@ -139,6 +163,43 @@
         }
         attr.frame = frame;
         pAttr = attr;
+    }
+}
+
+/// 计算AttributesAttrs左顶对齐
+/// @param layout JJCollectionViewRoundFlowLayout
+/// @param layoutAttributesAttrs 需计算的AttributesAttrs列表
+- (void)evaluatedCellSettingFrameByLeftTopWithWithJJCollectionLayout:(JJCollectionViewRoundFlowLayout *)layout layoutAttributesAttrs:(NSArray *)layoutAttributesAttrs{
+    UICollectionViewLayoutAttributes *pAttr = nil;
+    CGFloat minPointY = MAXFLOAT;
+    // 调整x坐标
+    for (UICollectionViewLayoutAttributes *attr in layoutAttributesAttrs) {
+        if (attr.representedElementKind != nil) {
+            //nil when representedElementCategory is UICollectionElementCategoryCell
+            continue;
+        }
+        CGRect frame = attr.frame;
+        if (self.scrollDirection == UICollectionViewScrollDirectionVertical) {
+            //竖向
+            minPointY = MIN(minPointY, attr.frame.origin.y);
+            if (pAttr) {
+                frame.origin.x = pAttr.frame.origin.x + pAttr.frame.size.width + [JJCollectionViewFlowLayoutUtils evaluatedMinimumInteritemSpacingForSectionWithCollectionLayout:layout atIndex:attr.indexPath.section];
+            }else{
+                frame.origin.x = [JJCollectionViewFlowLayoutUtils evaluatedSectionInsetForItemWithCollectionLayout:layout atIndex:attr.indexPath.section].left;
+            }
+        }// 不支持横向
+        attr.frame = frame;
+        pAttr = attr;
+    }
+    // 调整y坐标
+    for (UICollectionViewLayoutAttributes *attr in layoutAttributesAttrs) {
+        if (attr.representedElementKind != nil) {
+            // 非cell
+            continue;
+        }
+        CGRect newFrame = attr.frame;
+        newFrame.origin.y = minPointY;
+        attr.frame = newFrame;
     }
 }
 
